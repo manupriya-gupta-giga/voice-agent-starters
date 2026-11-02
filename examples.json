@@ -1,0 +1,21 @@
+{
+  "travel": {
+    "museum": {"name": "de Young Museum", "next": "garden"},
+    "garden": {"name": "Japanese Tea Garden", "next": "academy"},
+    "academy": {"name": "California Academy of Sciences", "next": "museum"}
+  },
+  "community": {
+    "keywords": {
+      "hours": ["when", "time", "hours", "schedule"],
+      "location": ["where", "location", "address", "room"],
+      "accessibility": ["access", "wheelchair", "step-free"],
+      "contact": ["contact", "organizer", "human", "help"]
+    },
+    "answers": {
+      "hours": "The sample workshop runs Saturdays, 2–4 PM. These are placeholder hours, not a real event listing.",
+      "location": "The sample venue is Room 1 at Example Community Center. Replace this with your own verified venue.",
+      "accessibility": "Accessibility information has not been supplied. Please ask the organizer before making plans.",
+      "contact": "Ask the workshop facilitator. This starter does not send messages or transfer calls."
+    }
+  }
+}

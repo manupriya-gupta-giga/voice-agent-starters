@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice agent starters</title>
+<style>
+  :root {font-family:system-ui,sans-serif;color:#203b35;background:#f5f6f0;line-height:1.55}
+  main {max-width:760px;margin:40px auto;padding:24px} h1 {font-size:2.4rem;line-height:1.15}
+  .card {background:white;border:1px solid #d5dfd7;border-radius:16px;padding:22px;margin:20px 0}
+  button,select,input {font:inherit;padding:10px;border:1px solid #9bad9e;border-radius:8px}
+  button {cursor:pointer;background:#e8f2dc} button:disabled {opacity:.5;cursor:default}
+  label {display:block;margin:12px 0} input[type=text] {width:100%;box-sizing:border-box}
+  .row {display:flex;gap:10px;flex-wrap:wrap} .muted {color:#53675c;font-size:.93rem}
+  #messages {min-height:80px;max-height:380px;overflow:auto} #messages p {white-space:pre-wrap}
+  #status {min-height:1.6em} a {color:#245d48} [hidden] {display:none!important}
+  :focus-visible {outline:3px solid #6c9853;outline-offset:3px}
+</style>
+<main>
+  <p class="muted">Two optional starting points · no account needed for demo mode</p>
+  <h1>Start with a conversation.</h1>
+  <p>Try a small travel assistant or an agent for your community. Use this starter, change it, or build something entirely your own.</p>
+  <section class="card" aria-label="Choose an example">
+    <label>Example <select id="mode"><option value="travel">1. Low-touch travel assistant</option><option value="community">2. Voice agent for your community</option></select></label>
+    <div id="travel-options">
+      <label>Where are you starting? <select id="origin"><option value="">Choose a demo stop</option><option value="museum">de Young Museum</option><option value="garden">Japanese Tea Garden</option><option value="academy">California Academy of Sciences</option></select></label>
+      <p class="muted">A sample sequence in Golden Gate Park. Choose your location above, then ask where to go next. Maps open only if you click the directions link.</p>
+    </div>
+    <p id="community-note" class="muted" hidden>Fictional community data. Try: “When is the workshop?” or “Is the venue accessible?”</p>
+    <label><input id="use-ai" type="checkbox"> Use the optional AI connection</label>
+    <p class="muted">Off by default. Demo mode uses a few scripted replies, not an AI model. AI mode needs a server-side key and model and may incur API charges.</p>
+  </section>
+  <section class="card" aria-label="Conversation">
+    <div id="messages" role="log" aria-label="Conversation messages"></div>
+    <form id="chat">
+      <label for="message">What would you like to ask?</label>
+      <input id="message" type="text" maxlength="1000" placeholder="Where should I go next?" required>
+      <div class="row" style="margin-top:14px"><button id="send">Send</button><button id="mic" type="button">Speak</button><button id="stop" type="button">Stop audio</button><button id="reset" type="button">Reset</button></div>
+    </form>
+    <label><input id="read-aloud" type="checkbox"> Read replies aloud</label>
+    <p id="status" role="status" class="muted"></p>
+    <p><a id="directions" target="_blank" rel="noopener noreferrer" hidden>Open walking directions in Google Maps</a></p>
+    <p class="muted">Speech availability depends on your browser. Browser speech recognition may send audio to its provider. Typed input always works. This is a browser demo, not a phone-number service.</p>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let history = [], recognition = null, busy = false, generation = 0;
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!Recognition) { $('mic').disabled = true; $('mic').title = 'Speech recognition is unavailable; type instead.'; }
+if (!window.speechSynthesis) $('read-aloud').disabled = true;
+function add(who, text) {
+  const p = document.createElement('p');
+  const label = document.createElement('strong'); label.textContent = who + ': ';
+  p.append(label, document.createTextNode(text)); $('messages').append(p);
+  $('messages').scrollTop = $('messages').scrollHeight;
+}
+function stopAudio() { recognition?.abort(); window.speechSynthesis?.cancel(); }
+function reset() {
+  generation++; history = []; stopAudio(); $('messages').replaceChildren();
+  $('directions').hidden = true; $('status').textContent = ''; $('message').value = '';
+  $('travel-options').hidden = $('mode').value !== 'travel';
+  $('community-note').hidden = $('mode').value !== 'community';
+  $('message').placeholder = $('mode').value === 'travel' ? 'Where should I go next?' : 'When is the workshop?';
+}
+$('mode').onchange = reset; $('origin').onchange = reset; $('use-ai').onchange = reset;
+$('reset').onclick = reset; $('stop').onclick = stopAudio;
+$('chat').onsubmit = async event => {
+  event.preventDefault(); if (busy) return;
+  const message = $('message').value.trim(); if (!message) return;
+  const token = generation; busy = true; $('send').disabled = true; stopAudio();
+  add('You', message); $('status').textContent = 'Thinking…'; $('directions').hidden = true;
+  try {
+    const response = await fetch('/chat', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({mode:$('mode').value, origin:$('origin').value, use_ai:$('use-ai').checked, message, history:history.slice(-8)})});
+    const data = await response.json(); if (token !== generation) return;
+    if (!response.ok) throw new Error(data.error || 'Could not get a reply.');
+    add('Agent', data.reply); history.push({role:'user',content:message},{role:'assistant',content:data.reply});
+    $('message').value = ''; $('status').textContent = 'Reply from ' + data.engine + '.';
+    if (data.directions_url) { $('directions').href = data.directions_url; $('directions').hidden = false; }
+    if ($('read-aloud').checked && window.speechSynthesis) {
+      const utterance = new SpeechSynthesisUtterance(data.reply); utterance.lang = 'en-US';
+      window.speechSynthesis.speak(utterance);
+    }
+  } catch (error) { if (token === generation) $('status').textContent = error.message + ' Your question is still in the input box.'; }
+  finally { busy = false; $('send').disabled = false; }
+};
+$('mic').onclick = () => {
+  if (!Recognition || busy) return;
+  stopAudio(); recognition = new Recognition(); recognition.lang = 'en-US'; recognition.interimResults = false;
+  $('status').textContent = 'Listening. Your words will appear in the input box; press Send when ready.';
+  recognition.onresult = event => { $('message').value = event.results[0][0].transcript.slice(0,1000); $('status').textContent = 'Review your words, then press Send.'; };
+  recognition.onerror = () => { $('status').textContent = 'Speech recognition unavailable or stopped. Please type your question.'; };
+  recognition.onend = () => { if ($('status').textContent.startsWith('Listening')) $('status').textContent = 'Listening stopped. You can type instead.'; };
+  try { recognition.start(); } catch { $('status').textContent = 'Microphone unavailable. Please type instead.'; }
+};
+</script>
+</html>
